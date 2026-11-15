@@ -19,7 +19,7 @@ const DEF = { setup: false, name: '', quit: defaultQuit(), price: 1500, days: 14
 let S = load(), page = 'home', timer = null;
 function load() { try { return Object.assign({}, DEF, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { return Object.assign({}, DEF); } }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { notice('Не получилось сохранить: браузер запретил хранение'); } }
-function notice(t) { const n = $('#notice'); n.textContent = t; n.style.display = 'block'; clearTimeout(notice.t); notice.t = setTimeout(() => n.style.display = 'none', 2600); }
+function notice(t) { const n = $('#notice'); n.textContent = t; n.classList.add('show'); clearTimeout(notice.t); notice.t = setTimeout(() => n.classList.remove('show'), 2600); }
 
 const quitAt = () => new Date(S.quit).getTime() || Date.now();
 const elapsed = () => Math.max(0, Date.now() - quitAt());
@@ -161,7 +161,7 @@ function settings() {
   const themes = [['base', 'Туман'], ['rose', 'Роза'], ['aqua', 'Аква'], ['lime', 'Лайм'], ['night', 'Ночь']];
   return head('настройки', 'Под себя') + `<div class="settings">
     <form class="card" data-form="profile"><h2>Мои данные</h2>${profileFields()}<div class="formactions"><button>Сохранить</button></div></form>
-    <div class="card"><h2>Оформление</h2><div class="themes">${themes.map(([k, t]) => `<button class="theme ${S.theme === k ? 'on' : ''}" data-theme="${k}">${t}</button>`).join('')}</div></div>
+    <div class="card"><h2>Оформление</h2><div class="themes">${themes.map(([k, t]) => `<button class="theme ${S.theme === k ? 'on' : ''}" data-set="${k}">${t}</button>`).join('')}</div></div>
     <div class="card"><h2>Данные</h2><p class="muted">Всё хранится только на этом устройстве, в браузере. Никуда не отправляется.</p><div class="row"><button class="ghost" data-act="export">Сохранить копию</button><button class="danger" data-act="reset">Стереть всё</button></div></div>
     <div class="card"><h2>На экран «Домой»</h2><p class="muted" style="margin:0">iPhone: открой в Safari → «Поделиться» → «На экран Домой». Откроется как обычное приложение, без адресной строки.</p></div></div>`;
 }
@@ -172,18 +172,21 @@ function welcome() {
 
 const NAV = [['home', '☼', 'Сегодня'], ['health', '♡', 'Тело'], ['diary', '∿', 'Тяга'], ['facts', '✦', 'Знать'], ['settings', '⚙︎', 'Настройки']];
 const PAGES = { home, health, diary, facts, settings };
-function draw() {
+function draw(anim) {
   document.body.dataset.theme = S.theme;
   const tc = getComputedStyle(document.body).getPropertyValue('--bg').trim(); if (tc) $('meta[name=theme-color]').content = tc;
   if (!S.setup) { app.innerHTML = welcome(); return; }
-  app.innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand">aquarius<span>≈</span></div><nav class="nav" aria-label="Разделы">${NAV.map(([k, i, t]) => `<button data-nav="${k}" class="${page === k ? 'active' : ''}"><span class="ico">${i}</span>${t}</button>`).join('')}</nav><div class="sidefoot"><span>${esc(S.name || 'личное')} · личное</span><span>пусть всё идёт в своём темпе</span></div></aside><main>${PAGES[page]()}</main></div>`;
+  const typing = app.contains(document.activeElement) && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) ? document.activeElement.name : '';
+  app.innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand">aquarius<span>≈</span></div><nav class="nav" aria-label="Разделы">${NAV.map(([k, i, t]) => `<button data-nav="${k}" class="${page === k ? 'active' : ''}"><span class="ico">${i}</span>${t}</button>`).join('')}</nav><div class="sidefoot"><span>${esc(S.name || 'личное')} · личное</span><span>пусть всё идёт в своём темпе</span></div></aside><main class="${anim ? 'enter' : ''}">${PAGES[page]()}</main></div>`;
+  if (typing) { const el = app.querySelector(`[name="${typing}"]`); if (el) el.focus({ preventScroll: true }); }
 }
 
 let lastDone = -1, lastBefore = null;
 function tick() {
   if (!S.setup) return;
   const d = stagesDone(), b = before();
-  if ((d !== lastDone || b !== lastBefore) && lastDone !== -1 && !modal.open) { lastDone = d; lastBefore = b; draw(); if (d > 0 && !b) notice('Новый этап: ' + STAGES[d - 1][2]); return; }
+  const busy = modal.open || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+  if ((d !== lastDone || b !== lastBefore) && lastDone !== -1 && !busy) { lastDone = d; lastBefore = b; draw(); if (d > 0 && !b) notice('Новый этап: ' + STAGES[d - 1][2]); return; }
   lastDone = d; lastBefore = b;
   if (page !== 'home' || !$('#t0')) return;
   const h = heroState(), c = calc();
@@ -228,11 +231,11 @@ function slipForm() {
 }
 
 document.addEventListener('click', e => {
-  const t = e.target.closest('[data-nav],[data-act],[data-prep],[data-theme],[data-del],[data-lv]'); if (!t) return;
+  const t = e.target.closest('[data-nav],[data-act],[data-prep],[data-set],[data-del],[data-lv]'); if (!t) return;
   const d = t.dataset;
-  if (d.nav) { page = d.nav; draw(); window.scrollTo(0, 0); }
+  if (d.nav) { if (d.nav === page) return; page = d.nav; draw(true); window.scrollTo(0, 0); }
   else if (d.prep) { S.prep[d.prep] = !S.prep[d.prep]; save(); draw(); }
-  else if (d.theme) { S.theme = d.theme; save(); draw(); }
+  else if (d.set) { S.theme = d.set; save(); draw(); }
   else if (d.del) { if (confirm('Удалить запись?')) { const x = S.log.find(x => String(x.t) === d.del); if (x && x.type === 'win') S.wins = Math.max(0, S.wins - 1); S.log = S.log.filter(x => String(x.t) !== d.del); save(); draw(); } }
   else if (d.lv) { t.parentNode.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === t)); t.closest('form').elements.lv.value = d.lv; }
   else if (d.act === 'sos') sos();
@@ -250,7 +253,7 @@ document.addEventListener('submit', e => {
   if (kind === 'setup' || kind === 'profile') {
     if (!v.quit || isNaN(new Date(v.quit))) return notice('Укажи дату старта');
     Object.assign(S, { name: v.name.trim(), quit: v.quit, price: Math.max(0, +v.price || 0), days: Math.max(1, +v.days || 1), mg: +v.mg === 50 ? 50 : 20, setup: true });
-    save(); if (kind === 'setup') page = 'home'; draw(); if (kind === 'profile') notice('Сохранено');
+    save(); if (kind === 'setup') page = 'home'; draw(kind === 'setup'); if (kind === 'profile') notice('Сохранено');
   } else if (kind === 'craving') {
     const win = k === 'win'; if (win) S.wins++;
     S.log.push({ t: Date.now(), type: win ? 'win' : 'craving', lv: +v.lv || 3, trig: v.trig, note: v.note.trim() });
@@ -262,4 +265,4 @@ document.addEventListener('submit', e => {
   }
 });
 
-draw(); setInterval(tick, 1000);
+draw(true); setInterval(tick, 1000);
